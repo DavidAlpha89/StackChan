@@ -358,6 +358,10 @@ void StackChanAvatarDisplay::SetEmotion(const char* emotion)
             idle_motion_modifier_id_ = -1;
             stackchan.removeModifier(idle_expression_modifier_id_);
             idle_expression_modifier_id_ = -1;
+            if (emotional_expression_modifier_id_ >= 0) {
+                stackchan.removeModifier(emotional_expression_modifier_id_);
+                emotional_expression_modifier_id_ = -1;
+            }
         }
 
         // Return to default pose
@@ -369,6 +373,20 @@ void StackChanAvatarDisplay::SetEmotion(const char* emotion)
     } else {
         ESP_LOGW(TAG, "Unknown emotion: %s, using NEUTRAL", emotion);
         avatar.setEmotion(Emotion::Neutral);
+    }
+
+    // Propagate to active expressive modifiers
+    Emotion mapped = avatar.getEmotion(); // fallback to Neutral if no getter
+    // Try to get from avatar or default
+    // For robustness we'll re-map from the string we just processed
+
+    if (speaking_modifier_id_ >= 0) {
+        auto* sm = static_cast<SpeakingModifier*>(stackchan.getModifier(speaking_modifier_id_));
+        if (sm) sm->setEmotion(mapped);
+    }
+    if (emotional_expression_modifier_id_ >= 0) {
+        auto* em = static_cast<EmotionalExpressionModifier*>(stackchan.getModifier(emotional_expression_modifier_id_));
+        if (em) em->setEmotion(mapped, 0.7f);
     }
 
     // Resync blink modifier base eye weights
@@ -523,7 +541,9 @@ void StackChanAvatarDisplay::SetStatus(const char* status)
 
     } else if (strcmp(status, Lang::Strings::SPEAKING) == 0) {
         if (speaking_modifier_id_ < 0) {
-            speaking_modifier_id_ = stackchan.addModifier(std::make_unique<SpeakingModifier>(0, 180, false));
+            // Use current emotion from avatar when starting to speak
+            auto current_emotion = stackchan.avatar().getEmotion(); // assume accessor exists or default Neutral
+            speaking_modifier_id_ = stackchan.addModifier(std::make_unique<SpeakingModifier>(0, 180, true, current_emotion));
         }
 
         GetHAL().setRgbColor(0, 0, 0, 50);
@@ -539,7 +559,10 @@ void StackChanAvatarDisplay::SetStatus(const char* status)
             if (idle_motion_level_ > 0) {
                 CreateIdleMotionModifier();
             }
-            idle_expression_modifier_id_ = stackchan.addModifier(std::make_unique<IdleExpressionModifier>());
+            // Use emotion-aware idle expression
+            auto current_emotion = stackchan.avatar().getEmotion();
+            emotional_expression_modifier_id_ = stackchan.addModifier(
+                std::make_unique<EmotionalExpressionModifier>(current_emotion, 0.7f));
         }
 
         _is_xiaozhi_idle = true;
@@ -551,6 +574,10 @@ void StackChanAvatarDisplay::SetStatus(const char* status)
             idle_motion_modifier_id_ = -1;
             stackchan.removeModifier(idle_expression_modifier_id_);
             idle_expression_modifier_id_ = -1;
+            if (emotional_expression_modifier_id_ >= 0) {
+                stackchan.removeModifier(emotional_expression_modifier_id_);
+                emotional_expression_modifier_id_ = -1;
+            }
         }
 
         // if (!is_listening) {

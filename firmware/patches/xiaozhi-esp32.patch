@@ -1,10 +1,28 @@
+diff --git a/main/Kconfig.projbuild b/main/Kconfig.projbuild
+index b4119fc..ad2088f 100644
+--- a/main/Kconfig.projbuild
++++ b/main/Kconfig.projbuild
+@@ -6,6 +6,13 @@ config OTA_URL
+     help
+         The application will access this URL to check for new firmwares and server address.
+
++config FORCE_CONFIG_OTA_URL
++    bool "Always use the configured OTA URL"
++    default n
++    help
++        Ignore a previously provisioned Wi-Fi ota_url and always use CONFIG_OTA_URL.
++        Keep this disabled unless the build injects a private device-specific URL.
++
+ choice
+     prompt "Flash Assets"
+     default FLASH_DEFAULT_ASSETS if !USE_EMOTE_MESSAGE_STYLE
 diff --git a/main/application.cc b/main/application.cc
 index d69d43d..3b6f07e 100644
 --- a/main/application.cc
 +++ b/main/application.cc
 @@ -610,33 +610,36 @@ void Application::InitializeProtocol() {
  }
- 
+
  void Application::ShowActivationCode(const std::string& code, const std::string& message) {
 -    struct digit_sound {
 -        char digit;
@@ -12,7 +30,7 @@ index d69d43d..3b6f07e 100644
 -    };
 -    static const std::array<digit_sound, 10> digit_sounds{{
 -        digit_sound{'0', Lang::Sounds::OGG_0},
--        digit_sound{'1', Lang::Sounds::OGG_1}, 
+-        digit_sound{'1', Lang::Sounds::OGG_1},
 -        digit_sound{'2', Lang::Sounds::OGG_2},
 -        digit_sound{'3', Lang::Sounds::OGG_3},
 -        digit_sound{'4', Lang::Sounds::OGG_4},
@@ -39,7 +57,7 @@ index d69d43d..3b6f07e 100644
 +    // };
 +    // static const std::array<digit_sound, 10> digit_sounds{{
 +    //     digit_sound{'0', Lang::Sounds::OGG_0},
-+    //     digit_sound{'1', Lang::Sounds::OGG_1}, 
++    //     digit_sound{'1', Lang::Sounds::OGG_1},
 +    //     digit_sound{'2', Lang::Sounds::OGG_2},
 +    //     digit_sound{'3', Lang::Sounds::OGG_3},
 +    //     digit_sound{'4', Lang::Sounds::OGG_4},
@@ -64,7 +82,7 @@ index d69d43d..3b6f07e 100644
 +    auto display = Board::GetInstance().GetDisplay();
 +    display->SetChatMessage("system", "Please bind and set up in the mobile app.");
  }
- 
+
  void Application::Alert(const char* status, const char* message, const char* emotion, const std::string_view& sound) {
 diff --git a/main/assets.cc b/main/assets.cc
 index ad61944..6b84daf 100644
@@ -84,7 +102,7 @@ index ad61944..6b84daf 100644
 @@ -356,72 +356,72 @@ bool Assets::LvglStrategy::Apply(Assets* assets) {
  }
  #endif // HAVE_LVGL
- 
+
 -bool Assets::EmoteStrategy::InitializePartition(Assets* assets) {
 -    assets->partition_valid_ = false;
 -
@@ -217,7 +235,7 @@ index ad61944..6b84daf 100644
 +//     }
 +//     return true;
 +// }
- 
+
  bool Assets::Download(std::string url, std::function<void(int progress, size_t speed)> progress_callback) {
      ESP_LOGI(TAG, "Downloading new version of assets from %s", url.c_str());
 diff --git a/main/assets.h b/main/assets.h
@@ -227,7 +245,7 @@ index 3692e0c..7bfbc5c 100644
 @@ -68,13 +68,13 @@ private:
          bool checksum_valid_ = false;
      };
-     
+
 -    class EmoteStrategy : public AssetStrategy {
 -    public:
 -        bool Apply(Assets* assets) override;
@@ -242,7 +260,7 @@ index 3692e0c..7bfbc5c 100644
 +    //     void UnApplyPartition(Assets* assets) override;
 +    //     bool GetAssetData(Assets* assets, const std::string& name, void*& ptr, size_t& size) override;
 +    // };
-     
+
      // Strategy instance
      std::unique_ptr<AssetStrategy> strategy_;
 diff --git a/main/boards/common/i2c_device.cc b/main/boards/common/i2c_device.cc
@@ -250,7 +268,7 @@ index 835997d..ea50d51 100644
 --- a/main/boards/common/i2c_device.cc
 +++ b/main/boards/common/i2c_device.cc
 @@ -32,4 +32,8 @@ uint8_t I2cDevice::ReadReg(uint8_t reg) {
- 
+
  void I2cDevice::ReadRegs(uint8_t reg, uint8_t* buffer, size_t length) {
      ESP_ERROR_CHECK(i2c_master_transmit_receive(i2c_device_, &reg, 1, buffer, length, 100));
 +}
@@ -269,5 +287,26 @@ index 7bc917b..874b137 100644
      void ReadRegs(uint8_t reg, uint8_t* buffer, size_t length);
 +    esp_err_t TryReadRegs(uint8_t reg, uint8_t* buffer, size_t length, int timeout_ms = 100);
  };
- 
+
  #endif // I2C_DEVICE_H
+diff --git a/main/ota.cc b/main/ota.cc
+index bcc0dc5..ed20b97 100644
+--- a/main/ota.cc
++++ b/main/ota.cc
+@@ -44,12 +44,16 @@ Ota::~Ota() {
+ }
+
+ std::string Ota::GetCheckVersionUrl() {
++#ifdef CONFIG_FORCE_CONFIG_OTA_URL
++    return CONFIG_OTA_URL;
++#else
+     Settings settings("wifi", false);
+     std::string url = settings.GetString("ota_url");
+     if (url.empty()) {
+         url = CONFIG_OTA_URL;
+     }
+     return url;
++#endif
+ }
+
+ std::unique_ptr<Http> Ota::SetupHttp() {
