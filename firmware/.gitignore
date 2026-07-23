@@ -64,4 +64,7 @@ obj/
 sdkconfig
 sdkconfig.old
 
+# Local self-hosted overlay: embeds the private bridge OTA bootstrap token — never commit.
+sdkconfig.defaults.local
+
 xiaozhi-esp32/

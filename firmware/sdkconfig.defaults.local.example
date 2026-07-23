@@ -1,0 +1,23 @@
+# StackChan private-backend overlay (EXAMPLE)
+#
+# Copy this file to `sdkconfig.defaults.local` and fill in the real bootstrap
+# token. CMakeLists.txt auto-applies sdkconfig.defaults.local on top of
+# sdkconfig.defaults, so these values override the committed upstream defaults
+# without touching them. The real overlay is git-ignored because the OTA URL
+# embeds the bridge bootstrap token (a secret).
+#
+# Goal: pin the Xiaozhi AI assistant to the self-hosted OpenClaw bridge on the
+# Tower and NEVER fall back to the public tenclass / M5Stack cloud. Off the LAN
+# the assistant simply fails closed (offline) instead of phoning home.
+#
+# The token below must match STACKCHAN_BOOTSTRAP_TOKEN in the Tower's
+# services/stackchan-openclaw-bridge.env. Bind host/port come from that same
+# env (STACKCHAN_BIND_HOST / STACKCHAN_PORT), default 192.168.50.200:9462.
+#
+# NOTE: after flashing you MUST erase NVS once (idf.py erase-flash) so any stale
+# tenclass websocket URL/token left over from a prior M5Stack-app activation is
+# cleared. Do NOT re-provision this device through the M5Stack companion app —
+# that rewrites wifi/ota_url back to the public cloud. Use xiaozhi's own Wi-Fi
+# config portal instead.
+
+CONFIG_OTA_URL="http://192.168.50.200:9462/ota/REPLACE_WITH_STACKCHAN_BOOTSTRAP_TOKEN"
