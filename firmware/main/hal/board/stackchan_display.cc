@@ -327,70 +327,73 @@ void StackChanAvatarDisplay::SetEmotion(const char* emotion)
     }
 
     DisplayLockGuard lock(this);
-
-    // ESP_LOGE(TAG, "SetEmotion: %s", emotion);
-
     auto& avatar = stackchan.avatar();
+    is_sleeping_ = false;
 
-    // Map emotion string to stackchan::Emotion
     if (strcmp(emotion, "neutral") == 0) {
         avatar.setEmotion(Emotion::Neutral);
-    } else if (strcmp(emotion, "happy") == 0) {
+        current_expression_emotion_ = SpeakingModifier::Emotion::Neutral;
+    } else if (strcmp(emotion, "happy") == 0 || strcmp(emotion, "laughing") == 0) {
         avatar.setEmotion(Emotion::Happy);
-    } else if (strcmp(emotion, "laughing") == 0) {
-        avatar.setEmotion(Emotion::Happy);
+        current_expression_emotion_ = SpeakingModifier::Emotion::Happy;
     } else if (strcmp(emotion, "angry") == 0) {
         avatar.setEmotion(Emotion::Angry);
-    } else if (strcmp(emotion, "sad") == 0) {
+        current_expression_emotion_ = SpeakingModifier::Emotion::Excited;
+    } else if (strcmp(emotion, "sad") == 0 || strcmp(emotion, "crying") == 0) {
         avatar.setEmotion(Emotion::Sad);
-    } else if (strcmp(emotion, "crying") == 0) {
-        avatar.setEmotion(Emotion::Sad);
+        current_expression_emotion_ = SpeakingModifier::Emotion::Sad;
     } else if (strcmp(emotion, "sleepy") == 0) {
         avatar.setEmotion(Emotion::Sleepy);
+        current_expression_emotion_ = SpeakingModifier::Emotion::Sleepy;
         avatar.setSpeech("Zzz…");
         is_sleeping_ = true;
-        // avatar.mouth().setWeight(10);
 
-        // Stop idle motion
-        ESP_LOGW(TAG, "Stop idle motion");
         if (idle_motion_modifier_id_ >= 0) {
             stackchan.removeModifier(idle_motion_modifier_id_);
             idle_motion_modifier_id_ = -1;
+        }
+        if (idle_expression_modifier_id_ >= 0) {
             stackchan.removeModifier(idle_expression_modifier_id_);
             idle_expression_modifier_id_ = -1;
-            if (emotional_expression_modifier_id_ >= 0) {
-                stackchan.removeModifier(emotional_expression_modifier_id_);
-                emotional_expression_modifier_id_ = -1;
-            }
         }
-
-        // Return to default pose
-        auto& motion = GetStackChan().motion();
-        motion.pitchServo().moveWithSpeed(0, 80);
-
-    } else if (strcmp(emotion, "doubtful") == 0) {
+        if (emotional_expression_modifier_id_ >= 0) {
+            stackchan.removeModifier(emotional_expression_modifier_id_);
+            emotional_expression_modifier_id_ = -1;
+        }
+        stackchan.motion().pitchServo().moveWithSpeed(0, 80);
+    } else if (strcmp(emotion, "doubtful") == 0 || strcmp(emotion, "curious") == 0) {
         avatar.setEmotion(Emotion::Doubt);
+        current_expression_emotion_ = SpeakingModifier::Emotion::Curious;
+    } else if (strcmp(emotion, "excited") == 0) {
+        avatar.setEmotion(Emotion::Happy);
+        current_expression_emotion_ = SpeakingModifier::Emotion::Excited;
+    } else if (strcmp(emotion, "thoughtful") == 0) {
+        avatar.setEmotion(Emotion::Doubt);
+        current_expression_emotion_ = SpeakingModifier::Emotion::Thoughtful;
+    } else if (strcmp(emotion, "surprised") == 0) {
+        avatar.setEmotion(Emotion::Doubt);
+        current_expression_emotion_ = SpeakingModifier::Emotion::Surprised;
     } else {
-        ESP_LOGW(TAG, "Unknown emotion: %s, using NEUTRAL", emotion);
+        ESP_LOGW(TAG, "Unknown emotion, using NEUTRAL");
         avatar.setEmotion(Emotion::Neutral);
+        current_expression_emotion_ = SpeakingModifier::Emotion::Neutral;
     }
-
-    // Propagate to active expressive modifiers
-    Emotion mapped = avatar.getEmotion(); // fallback to Neutral if no getter
-    // Try to get from avatar or default
-    // For robustness we'll re-map from the string we just processed
 
     if (speaking_modifier_id_ >= 0) {
-        auto* sm = static_cast<SpeakingModifier*>(stackchan.getModifier(speaking_modifier_id_));
-        if (sm) sm->setEmotion(mapped);
+        auto* modifier = static_cast<SpeakingModifier*>(stackchan.getModifier(speaking_modifier_id_));
+        if (modifier) {
+            modifier->setEmotion(current_expression_emotion_);
+        }
     }
     if (emotional_expression_modifier_id_ >= 0) {
-        auto* em = static_cast<EmotionalExpressionModifier*>(stackchan.getModifier(emotional_expression_modifier_id_));
-        if (em) em->setEmotion(mapped, 0.7f);
+        auto* modifier = static_cast<EmotionalExpressionModifier*>(
+            stackchan.getModifier(emotional_expression_modifier_id_));
+        if (modifier) {
+            modifier->setEmotion(current_expression_emotion_, expression_intensity_);
+        }
     }
 
-    // Resync blink modifier base eye weights
-    auto blink_modifier = static_cast<BlinkModifier*>(stackchan.getModifier(blink_modifier_id_));
+    auto* blink_modifier = static_cast<BlinkModifier*>(stackchan.getModifier(blink_modifier_id_));
     if (blink_modifier) {
         blink_modifier->resyncEyeWeights();
     }
@@ -506,12 +509,10 @@ void StackChanAvatarDisplay::SetStatus(const char* status)
     }
 
     auto& avatar = stackchan.avatar();
-    auto& motion = stackchan.motion();
 
     DisplayLockGuard lock(this);
 
-    bool is_idle      = false;
-    bool is_listening = false;
+    bool is_idle = false;
 
     if (strcmp(status, Lang::Strings::LISTENING) == 0) {
         if (speaking_modifier_id_ >= 0) {
@@ -521,8 +522,7 @@ void StackChanAvatarDisplay::SetStatus(const char* status)
             speaking_modifier_id_ = -1;
         }
 
-        GetHAL().setRgbColor(0, 0, 50, 0);
-        GetHAL().refreshRgb();
+        GetHAL().showRgbColor(0, 50, 0);
 
     } else if (strcmp(status, Lang::Strings::STANDBY) == 0) {
         _is_xiaozhi_ready = true;
@@ -536,48 +536,43 @@ void StackChanAvatarDisplay::SetStatus(const char* status)
 
         is_idle = true;
 
-        GetHAL().setRgbColor(0, 0, 0, 0);
-        GetHAL().refreshRgb();
+        GetHAL().showRgbColor(0, 0, 0);
 
+    } else if (strcmp(status, "Thinking...") == 0) {
+        GetHAL().showRgbColor(0, 0, 50);
     } else if (strcmp(status, Lang::Strings::SPEAKING) == 0) {
         if (speaking_modifier_id_ < 0) {
-            // Use current emotion from avatar when starting to speak
-            auto current_emotion = stackchan.avatar().getEmotion(); // assume accessor exists or default Neutral
-            speaking_modifier_id_ = stackchan.addModifier(std::make_unique<SpeakingModifier>(0, 180, true, current_emotion));
+            speaking_modifier_id_ = stackchan.addModifier(
+                std::make_unique<SpeakingModifier>(0, 180, true, current_expression_emotion_));
         }
 
-        GetHAL().setRgbColor(0, 0, 0, 50);
-        GetHAL().refreshRgb();
+        GetHAL().showRgbColor(0, 0, 50);
     } else {
         avatar.setSpeech(status);
     }
 
     if (is_idle) {
-        // Start idle motion
-        ESP_LOGW(TAG, "Start idle motion");
-        if (idle_motion_modifier_id_ < 0) {
-            if (idle_motion_level_ > 0) {
-                CreateIdleMotionModifier();
-            }
-            // Use emotion-aware idle expression
-            auto current_emotion = stackchan.avatar().getEmotion();
+        ESP_LOGW(TAG, "Start emotional idle expression");
+        if (emotional_expression_modifier_id_ < 0) {
             emotional_expression_modifier_id_ = stackchan.addModifier(
-                std::make_unique<EmotionalExpressionModifier>(current_emotion, 0.7f));
+                std::make_unique<EmotionalExpressionModifier>(
+                    current_expression_emotion_, expression_intensity_));
         }
 
         _is_xiaozhi_idle = true;
     } else {
-        // Stop idle motion
-        ESP_LOGW(TAG, "Stop idle motion");
+        ESP_LOGW(TAG, "Stop idle expression");
         if (idle_motion_modifier_id_ >= 0) {
             stackchan.removeModifier(idle_motion_modifier_id_);
             idle_motion_modifier_id_ = -1;
+        }
+        if (idle_expression_modifier_id_ >= 0) {
             stackchan.removeModifier(idle_expression_modifier_id_);
             idle_expression_modifier_id_ = -1;
-            if (emotional_expression_modifier_id_ >= 0) {
-                stackchan.removeModifier(emotional_expression_modifier_id_);
-                emotional_expression_modifier_id_ = -1;
-            }
+        }
+        if (emotional_expression_modifier_id_ >= 0) {
+            stackchan.removeModifier(emotional_expression_modifier_id_);
+            emotional_expression_modifier_id_ = -1;
         }
 
         // if (!is_listening) {

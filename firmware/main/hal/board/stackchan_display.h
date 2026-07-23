@@ -10,8 +10,8 @@
 #include <esp_timer.h>
 #include <memory>
 
-#include "main/stackchan/modifiers/speaking.h"
-#include "main/stackchan/modifiers/emotional_expression.h"
+#include "stackchan/modifiers/speaking.h"
+#include "stackchan/modifiers/emotional_expression.h"
 
 class StackChanAvatarDisplay : public LvglDisplay {
 private:
@@ -22,6 +22,9 @@ private:
     int idle_expression_modifier_id_    = -1;
     int emotional_expression_modifier_id_ = -1;
     int blink_modifier_id_              = -1;
+    stackchan::SpeakingModifier::Emotion current_expression_emotion_ =
+        stackchan::SpeakingModifier::Emotion::Neutral;
+    float expression_intensity_         = 0.7f;
     bool is_sleeping_                   = false;
     uint8_t idle_motion_level_          = 2;
 

@@ -26,8 +26,12 @@ extern "C" void app_main(void)
     ui_hal::on_delay([](uint32_t ms) { GetHAL().delay(ms); });
     ui_hal::on_get_tick([]() { return GetHAL().millis(); });
 
+#if CONFIG_FORCE_AI_AGENT_ON_BOOT
+    const bool skip_mooncake = true;
+#else
     const bool skip_mooncake =
         GetHAL().getXiaozhiConfig().startAiAgentOnBoot && GetHAL().getWarmRebootTarget() < 0;
+#endif
 
     if (!skip_mooncake) {
         // Install apps

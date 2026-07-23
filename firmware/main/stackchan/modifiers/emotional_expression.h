@@ -6,8 +6,10 @@
 #pragma once
 #include "../modifiable.h"
 #include "../utils/random.h"
+#include "speaking.h"
 #include <smooth_ui_toolkit.hpp>
 #include <hal/hal.h>
+#include <algorithm>
 #include <cstdint>
 
 namespace stackchan {
@@ -63,6 +65,11 @@ private:
         auto& motion = stackchan.motion();
         auto& random = Random::getInstance();
 
+        if (_need_get_home_angles) {
+            _home_angles = motion.getCurrentAngles();
+            _need_get_home_angles = false;
+        }
+
         int action = random.getInt(0, 100);
 
         // 根据情绪调整行为概率
@@ -79,7 +86,17 @@ private:
             if (!motion.isMoving() && random.getInt(0, 100) < 40) {
                 int yaw_delta   = random.getInt(-25, 25) * _intensity;
                 int pitch_delta = random.getInt(-15, 20) * _intensity;
-                motion.moveWithSpeed(yaw_delta, pitch_delta, 120);
+                const auto yaw_limits   = motion.yawServo().getAngleLimit();
+                const auto pitch_limits = motion.pitchServo().getAngleLimit();
+                const int safe_yaw_min = std::max(yaw_limits.x, _home_angles.x - 25);
+                const int safe_yaw_max = std::min(yaw_limits.y, _home_angles.x + 25);
+                const int safe_pitch_min = std::max(pitch_limits.x, _home_angles.y);
+                const int safe_pitch_max = std::min(pitch_limits.y, _home_angles.y + 20);
+                const int target_yaw = uitk::clamp(
+                    _home_angles.x + yaw_delta, safe_yaw_min, safe_yaw_max);
+                const int target_pitch = uitk::clamp(
+                    _home_angles.y + pitch_delta, safe_pitch_min, safe_pitch_max);
+                motion.moveWithSpeed(target_yaw, target_pitch, 120);
             }
         } 
         else if (action < 55) {
@@ -121,6 +138,8 @@ private:
     Emotion _emotion = Emotion::Neutral;
     float   _intensity = 0.7f;
     uint32_t _next_tick = 0;
+    bool _need_get_home_angles = true;
+    uitk::Vector2i _home_angles;
 };
 
 }  // namespace stackchan

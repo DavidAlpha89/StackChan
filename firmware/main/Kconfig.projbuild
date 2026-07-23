@@ -19,6 +19,20 @@ config OTA_URL
     help
         The application will access this URL to check for new firmwares and server address.
 
+config FORCE_CONFIG_OTA_URL
+    bool "Always use the configured OTA URL"
+    default n
+    help
+        Ignore any ota_url saved by earlier Wi-Fi provisioning and always use
+        CONFIG_OTA_URL. Enable this for a private local-backend build.
+
+config FORCE_AI_AGENT_ON_BOOT
+    bool "Start the AI Agent directly at boot"
+    default n
+    help
+        Skip the multi-app launcher and start the Xiaozhi AI Agent runtime
+        immediately. Enable this for a dedicated conversational robot build.
+
 choice
     prompt "Flash Assets"
     default FLASH_DEFAULT_ASSETS if !USE_EMOTE_MESSAGE_STYLE

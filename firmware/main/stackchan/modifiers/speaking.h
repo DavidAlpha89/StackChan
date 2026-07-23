@@ -8,6 +8,7 @@
 #include "../utils/random.h"
 #include <smooth_ui_toolkit.hpp>
 #include <hal/hal.h>
+#include <algorithm>
 #include <cstdint>
 
 namespace stackchan {
@@ -130,6 +131,7 @@ private:
 
         if (_need_get_prev_angles) {
             _prev_angles          = current_actual_angles;
+            _home_angles          = current_actual_angles;
             _need_get_prev_angles = false;
         } else {
             const int32_t threshold = 300;
@@ -157,6 +159,13 @@ private:
             target_yaw   += Random::getInstance().getInt(-amp, amp);
             target_pitch += Random::getInstance().getInt(-amp/2, amp/2);
         }
+
+        const auto yaw_limits = motion.yawServo().getAngleLimit();
+        const auto pitch_limits = motion.pitchServo().getAngleLimit();
+        const int safe_pitch_min = std::max(pitch_limits.x, _home_angles.y);
+        const int safe_pitch_max = pitch_limits.y;
+        target_yaw = uitk::clamp(target_yaw, yaw_limits.x, yaw_limits.y);
+        target_pitch = uitk::clamp(target_pitch, safe_pitch_min, safe_pitch_max);
 
         motion.moveWithSpeed(target_yaw, target_pitch, speed);
     }
@@ -221,6 +230,7 @@ private:
 
     Emotion _emotion = Emotion::Neutral;
     uitk::Vector2i _prev_angles;
+    uitk::Vector2i _home_angles;
 };
 
 }  // namespace stackchan
